@@ -1,0 +1,1 @@
+A simple python utility that automatically takes screenshot whenever display changes.
