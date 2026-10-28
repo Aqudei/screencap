@@ -1,11 +1,44 @@
-from PIL import ImageGrab, ImageChops, ImageStat
-import time
-import beepy
-from datetime import datetime
 import os
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime
+
+import beepy
+from PIL import ImageGrab, ImageChops, ImageStat
+from pynput import keyboard
+
+TOGGLE_HOTKEY = "<f8>"
+
+
+def play_ping() -> None:
+    subprocess.run(
+        ["afplay", "/System/Library/Sounds/Ping.aiff"],
+        check=False,
+    )
+
+
+def beep() -> None:
+    if 'darwin' in str(sys.platform):
+        target = play_ping
+        kwargs = {}
+    else:
+        target = beepy.beep
+        kwargs = {"sound": "ping"}
+    threading.Thread(target=target, kwargs=kwargs, daemon=True).start()
+
+
+def toggle_capture(capture_enabled: threading.Event) -> None:
+    if capture_enabled.is_set():
+        capture_enabled.clear()
+        print("Capture paused.")
+    else:
+        capture_enabled.set()
+        print("Capture resumed.")
 
 # SETTINGSCONFIGURATION ####
-RMS_THRESHOLD = 20
+RMS_THRESHOLD = 40
 DESTINATION_FOLDER = "./"
 SECONDS_INTERVAL = 3 #SECONDS
 ############################
@@ -24,20 +57,31 @@ def save_image(im):
     filename = f"Capture-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.png"
     filename = os.path.abspath(os.path.join(DESTINATION_FOLDER, filename))
     im.save(f"{filename}")
-    beepy.beep(sound='ping')
+    beep()
     print(f"Image saved to {filename}")
 
 
 if __name__ == "__main__":
     last_cap = None
+    capture_enabled = threading.Event()
+    capture_enabled.set()
+    hotkey_listener = keyboard.GlobalHotKeys(
+        {TOGGLE_HOTKEY: lambda: toggle_capture(capture_enabled)}
+    )
 
     print("Process stared.")
     print(f"Output will be save in := '{os.path.abspath(DESTINATION_FOLDER)}'")
     print(f"RMS Threshold to trigger save := '{RMS_THRESHOLD}'")
     print(f"Repeat interval := '{SECONDS_INTERVAL} SECONDS'")
-    print(f"Press Ctrl+C to quit/exit.\n\n")
+    print("Press F8 to pause/resume capture. Press Ctrl+C to quit.\n")
+
+    hotkey_listener.start()
     try:
         while True:
+            if not capture_enabled.is_set():
+                time.sleep(SECONDS_INTERVAL)
+                continue
+
             im = ImageGrab.grab()
             if last_cap:
                 stats = image_stats(im, last_cap)
@@ -54,4 +98,6 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         print("Process completed.")
-        exit(0)
+    finally:
+        hotkey_listener.stop()
+        hotkey_listener.join()

@@ -1,3 +1,4 @@
 beepy
 Pillow
 numpy
+pynput
